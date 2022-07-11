@@ -7,7 +7,7 @@ import os
 import base64
 import json
 import pathlib
-import onnxruntime
+import onnxruntime # 跨平台多框架模型加速器
 from PIL import Image, ImageChops
 import numpy as np
 import cv2
@@ -29,13 +29,22 @@ class TypeError(Exception):
 
 
 class DdddOcr(object):
-    def __init__(self, ocr: bool = True, det: bool = False, old: bool = False, use_gpu: bool = False,
-                 device_id: int = 0, show_ad=True, import_onnx_path: str = "", charsets_path: str = ""):
+    def __init__(
+            self, 
+            ocr: bool = True, 
+            det: bool = False, 
+            old: bool = False, 
+            use_gpu: bool = False,
+            device_id: int = 0, # 执行硬件
+            show_ad=True, 
+            import_onnx_path: str = "", 
+            charsets_path: str = ""):
         if show_ad:
             print("欢迎使用ddddocr，本项目专注带动行业内卷，个人博客:wenanzhe.com")
             print("训练数据支持来源于:http://146.56.204.113:19199/preview")
             print("爬虫框架feapder可快速一键接入，快速开启爬虫之旅：https://github.com/Boris-code/feapder")
-        self.use_import_onnx = False
+        self.use_import_onnx = False # 使用自定义onnx模型
+        # charsets.json 数据
         self.__word = False
         self.__resize = []
         self.__channel = 1
@@ -45,6 +54,7 @@ class DdddOcr(object):
             self.__graph_path = import_onnx_path
             with open(charsets_path, 'r', encoding="utf-8") as f:
                 info = json.loads(f.read())
+            # charsets.json 数据
             self.__charset = info['charset']
             self.__word = info['word']
             self.__resize = info['image']
@@ -1442,17 +1452,17 @@ class DdddOcr(object):
         self.det = det
         if use_gpu:
             self.__providers = [
-                ('CUDAExecutionProvider', {
+                ('CUDAExecutionProvider', { # gpu 执行 https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
                     'device_id': device_id,
-                    'arena_extend_strategy': 'kNextPowerOfTwo',
-                    'cuda_mem_limit': 2 * 1024 * 1024 * 1024,
-                    'cudnn_conv_algo_search': 'EXHAUSTIVE',
-                    'do_copy_in_default_stream': True,
+                    'arena_extend_strategy': 'kNextPowerOfTwo', # 内存指数扩展
+                    'cuda_mem_limit': 2 * 1024 * 1024 * 1024, # 没找到这个 倒是有个 gpu_mem_limit 内存限制
+                    'cudnn_conv_algo_search': 'EXHAUSTIVE', # 为 cuDNN 卷积算法完成的搜索类型
+                    'do_copy_in_default_stream': True, # 是在默认流中复制还是使用单独的流 是什么的流
                 }),
             ]
         else:
             self.__providers = [
-                'CPUExecutionProvider',
+                'CPUExecutionProvider', # cpu 执行
             ]
         if ocr or det or self.use_import_onnx:
             self.__ort_session = onnxruntime.InferenceSession(self.__graph_path, providers=self.__providers)
@@ -1660,6 +1670,7 @@ class DdddOcr(object):
         result = self.get_bbox(img_bytes)
         return result
 
+    # 裁剪透明区域
     def get_target(self, img_bytes: bytes = None):
         image = Image.open(io.BytesIO(img_bytes))
         w, h = image.size
@@ -1693,22 +1704,22 @@ class DdddOcr(object):
     def slide_match(self, target_bytes: bytes = None, background_bytes: bytes = None, simple_target: bool=False):
         if not simple_target:
             target, target_x, target_y = self.get_target(target_bytes)
-            target = cv2.cvtColor(np.asarray(target), cv2.IMREAD_ANYCOLOR)
+            target = cv2.cvtColor(np.asarray(target), cv2.IMREAD_ANYCOLOR) # cv2.cvtColor 色彩空间转换 np.asarray从数组转为np
         else:
-            target = cv2.imdecode(np.frombuffer(target_bytes, np.uint8), cv2.IMREAD_ANYCOLOR)
+            target = cv2.imdecode(np.frombuffer(target_bytes, np.uint8), cv2.IMREAD_ANYCOLOR) # cv2.imdecode 从内存缓存中读取图像数据并将其转换为图像格式
             target_y = 0
             target_x = 0
 
         background = cv2.imdecode(np.frombuffer(background_bytes, np.uint8), cv2.IMREAD_ANYCOLOR)
 
-        background = cv2.Canny(background, 100, 200)
-        target = cv2.Canny(target, 100, 200)
+        background = cv2.Canny(background, 100, 200) # 边缘检测
+        target = cv2.Canny(target, 100, 200) # 边缘检测
 
         background = cv2.cvtColor(background, cv2.COLOR_GRAY2RGB)
         target = cv2.cvtColor(target, cv2.COLOR_GRAY2RGB)
 
-        res = cv2.matchTemplate(background, target, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+        res = cv2.matchTemplate(background, target, cv2.TM_CCOEFF_NORMED) # 模板匹配
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res) # 查找最小和最大元素值及其位置
         h, w = target.shape[:2]
         bottom_right = (max_loc[0] + w, max_loc[1] + h)
         return {"target_y": target_y,
